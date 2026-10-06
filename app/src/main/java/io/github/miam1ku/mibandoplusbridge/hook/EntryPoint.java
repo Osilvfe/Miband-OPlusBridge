@@ -132,6 +132,13 @@ public final class EntryPoint implements IXposedHookLoadPackage {
                 android.util.Log.i("OplusBandBridge", "OHEALTH_SLEEP_DELETE_HOOK_UNAVAILABLE "
                         + incompatible.getClass().getSimpleName());
             }
+            try {
+                installStepDetailDelete(context, loader);
+                android.util.Log.i("OplusBandBridge", "OHEALTH_STEP_DETAIL_KEEP_HOOKED");
+            } catch (Throwable incompatible) {
+                android.util.Log.i("OplusBandBridge", "OHEALTH_STEP_DETAIL_KEEP_UNAVAILABLE "
+                        + incompatible.getClass().getSimpleName());
+            }
         }
         try {
             OHealthHealthImportHook.install(context, loader);
@@ -195,6 +202,45 @@ public final class EntryPoint implements IXposedHookLoadPackage {
                                         new Object[] {account, device, start, end}
                                 });
                         param.setResult(0);
+                    }
+                });
+    }
+
+    /**
+     * OHealth deletes recent DBSportDataDetail rows on start (the Data-Sync clear). Keep the
+     * band's minute rows, which are stored under the MAC device id, so imported step and
+     * calorie bars survive restarts. Rows for other devices (the legacy bridge id, the phone)
+     * are still removed as the caller asked.
+     */
+    private static void installStepDetailDelete(Context context, ClassLoader loader) {
+        XposedHelpers.findAndHookMethod(
+                "com.heytap.databaseengineservice.store.business.SportDataDetailStore", loader,
+                "delete", "com.heytap.databaseengine.option.DataDeleteOption", new XC_MethodHook() {
+                    @Override protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        Object option = param.args.length == 0 ? null : param.args[0];
+                        if (option == null) return;
+                        Integer table = (Integer) option.getClass().getMethod("getDataTable")
+                                .invoke(option);
+                        if (table == null || table != OHealthStepWriter.TABLE_DETAIL) return;
+                        String account = (String) option.getClass().getMethod("getSsoid").invoke(option);
+                        long start = (Long) option.getClass().getMethod("getStartTime").invoke(option);
+                        long end = (Long) option.getClass().getMethod("getEndTime").invoke(option);
+                        if (account == null || account.isBlank() || end < start) return;
+                        Class<?> dbClass = Class.forName(
+                                "com.heytap.databaseengineservice.db.AppDatabase", false, loader);
+                        Object database = dbClass.getMethod("getInstance", Context.class)
+                                .invoke(null, context);
+                        Object helper = database.getClass().getMethod("getOpenHelper").invoke(database);
+                        Object sqlite = helper.getClass().getMethod("getWritableDatabase").invoke(helper);
+                        sqlite.getClass().getMethod("execSQL", String.class, Object[].class).invoke(sqlite,
+                                new Object[] {
+                                        "DELETE FROM DBSportDataDetail WHERE ssoid = ?"
+                                                + " AND start_time >= ? AND start_time <= ?"
+                                                + " AND device_unique_id NOT LIKE '%:%'",
+                                        new Object[] {account, start, end}
+                                });
+                        param.setResult(0);
+                        android.util.Log.i("OplusBandBridge", "OHEALTH_STEP_DETAIL_KEPT");
                     }
                 });
     }
