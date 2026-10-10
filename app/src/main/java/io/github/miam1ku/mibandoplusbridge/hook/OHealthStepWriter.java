@@ -219,6 +219,14 @@ final class OHealthStepWriter {
             List<HealthRecord> records, SharedPreferences written) throws Exception {
         if (!prepareDetail()) return 0;
         MinuteBar[] minutes = MinuteBar.day(records, day.startMs, day.timezone);
+        boolean hasMinuteData = false;
+        for (MinuteBar bar : minutes) {
+            if (bar != null && (bar.steps > 0 || bar.calories > 0 || bar.distance > 0)) {
+                hasMinuteData = true;
+                break;
+            }
+        }
+        if (!hasMinuteData) return 0;
         String version = device + ":" + day.date + ":minute-v1";
         boolean rebuild = !"1".equals(written.getString(version, ""));
         if (!rebuild) {
