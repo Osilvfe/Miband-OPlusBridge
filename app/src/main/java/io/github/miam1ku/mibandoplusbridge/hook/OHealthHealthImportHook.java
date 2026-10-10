@@ -884,7 +884,7 @@ public final class OHealthHealthImportHook {
         }
 
         /** Detail deletes use the same inclusive host end as the read, so an empty read confirms one. */
-        private boolean minuteRowsRemain(Object api, String account, String device, long start, long end)
+        boolean minuteRowsRemain(Object api, String account, String device, long start, long end)
                 throws Exception {
             return !readRows(api, account, OHealthStepWriter.TABLE_DETAIL, device,
                     Math.max(0, start), end - 1, 0, false, 1).isEmpty();

@@ -113,7 +113,6 @@ final class OHealthStepWriter {
                 long end = day.startMs + 86_400_000L;
                 try {
                     host.deleteRows(api, TABLE_STAT, account, queued, day.startMs, end);
-                    host.deleteRows(api, TABLE_DETAIL, account, queued, day.startMs, end);
                 } catch (Exception ignored) {
                     Log.i("OplusBandBridge", "OHEALTH_STEP_PREVIOUS_DEVICE_KEPT date=" + day.date);
                 }
@@ -222,16 +221,14 @@ final class OHealthStepWriter {
         MinuteBar[] minutes = MinuteBar.day(records, day.startMs, day.timezone);
         String version = device + ":" + day.date + ":minute-v1";
         boolean rebuild = !"1".equals(written.getString(version, ""));
-        if (rebuild) {
+        if (!rebuild) {
             try {
-                host.deleteRows(api, TABLE_DETAIL, account, device, day.startMs, day.startMs + 86_400_000L);
-            } catch (Exception deleteFailed) {
-                // A host delete that cannot be confirmed must not drop the day. The bars below are
-                // upserts, so overlapping minutes are replaced; a stale minute can outlive one pass.
-                Log.i("OplusBandBridge", "OHEALTH_STEP_CHART_DELETE_KEPT date=" + day.date
-                        + " " + deleteFailed);
-            }
+                if (!host.minuteRowsRemain(api, account, device, day.startMs, day.startMs + 86_400_000L)) {
+                    rebuild = true;
+                }
+            } catch (Exception ignored) { }
         }
+        // Upserts replace overlapping minutes safely without deleting all devices for the whole day.
         List<Object> rows = new ArrayList<>();
         List<Integer> indexes = new ArrayList<>();
         for (int minute = 0; minute < MINUTES_PER_DAY; minute++) {
